@@ -1,14 +1,15 @@
 # Material-Calculator
 
-**SAJJAD QSCALCULATOR** — construction & finishes material calculator (QS / Civil / Structural / MEP), in one
-self-contained HTML file (`index.html`). Reference data rev 2026-09-25.
+**SAJJAD QSCALCULATOR** — Construction Material Calculator: earthwork, concrete (grey structure), masonry, reinforcement,
+plaster & mortar, flooring & tiles, painting & coatings, waterproofing, ceiling & partitions. One self-contained HTML
+file (`index.html`). Reference data rev 2026-09-25.
 
 ## Use it
-- **Online:** open the shared link, or enable GitHub Pages (Settings → Pages → Deploy from branch → `main` / root) and use
-  `https://sajjadsj44-max.github.io/Material-Calculator/`.
+- **Online:** https://sajjadsj44-max.github.io/Material-Calculator/ (GitHub Pages, deployed from `main` / root).
 - **Offline:** download `index.html` and open it in any browser (phone or PC). No install, no internet needed.
 
 ## Notes
-- History, favourites and custom calculators are saved only in your own browser (localStorage).
-- The visitor counter is the only online request; when offline it stays hidden.
+- Favourites, history and last inputs are saved only in your own browser, under their own `sqcalc.` keys, so they stay
+  separate from the ZD dashboard on the same github.io site.
+- The visitor counter (abacus.jasoncameron.dev) is the only online request; when offline it stays hidden.
 - Check results before use in contract documents.
