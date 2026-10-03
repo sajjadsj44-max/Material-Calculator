@@ -515,8 +515,8 @@ function su(u){ return SHORT[u]||u; }
 
 /* ------------------------------------------------------------------ storage (per-viewer conveniences) */
 var store={
-  get:function(k,d){ try{ var v=localStorage.getItem('zdcalc.'+k); return v?JSON.parse(v):d; }catch(e){ return d; } },
-  set:function(k,v){ try{ localStorage.setItem('zdcalc.'+k,JSON.stringify(v)); }catch(e){} }
+  get:function(k,d){ try{ var v=localStorage.getItem('sqcalc.'+k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+  set:function(k,v){ try{ localStorage.setItem('sqcalc.'+k,JSON.stringify(v)); }catch(e){} }
 };
 
 /* ------------------------------------------------------------------ sources / materials */
@@ -1997,7 +1997,7 @@ var LIBS=[{v:'conv',name:'Unit Converter',sub:'Length, area, volume, mass, force
   {v:'secdb',name:'Steel Section & Unit Weight Database',sub:SERIES.reduce(function(n,s){return n+s.rows.length;},0).toLocaleString()+' sections & pipes — IS 808, EN, BS, AISC, ASME',ic:'I'},
   {v:'gaugelib',name:'Gauge Reference Table',sub:'Gauge ↔ mm ↔ inch for GI, MS, stainless, aluminium, SWG, BWG — with sources',ic:'plate'},
   {v:'convlib',name:'Conversion Library',sub:'Every conversion factor with its definition',ic:'grid'},{v:'formlib',name:'Formula Library',sub:'All calculator formulas in one place',ic:'grid'},
-  {v:'consts',name:'Engineering Constants / Unit Weights',sub:'Material densities, rebar, cable, gauge, AWG tables with sources',ic:'grid'},{v:'settings',name:'Density Settings',sub:'Standard vs user-defined densities',ic:'grid'},
+  {v:'consts',name:'Engineering Constants / Unit Weights',sub:'Construction material densities, rebar weights and constants with sources',ic:'grid'},{v:'settings',name:'Density Settings',sub:'Standard vs user-defined densities',ic:'grid'},
   {v:'custom',name:'Custom Calculations',sub:'Define your own named formulas',ic:'grid'}];
 function libCard(l){ return '<div class="zc-cc zc-lib k-conv" data-lib="'+l.v+'"><div class="zc-cc-ic">'+mini(l.ic)+'</div><div class="zc-cc-t"><b>'+esc(l.name)+'</b><span>'+esc(l.sub)+'</span></div></div>'; }
 function renderHome(body,cat){
@@ -2019,7 +2019,7 @@ function renderHome(body,cat){
 }
 function histHtml(){
   if(!HIST.length) return '<div class="zc-empty">Calculations you run are kept here on this device (browser storage).</div>';
-  return '<div class="zc-hist">'+HIST.slice(0,12).map(function(e,i){ var c=calcById(e.id);
+  return '<div class="zc-hist">'+HIST.slice(0,12).map(function(e,i){ var c=calcById(e.id); if(!c) return '';
     return '<div class="zc-hrow"><div class="zc-hm"><b>'+esc(c?c.name:e.id)+'</b><span>'+esc(e.sum||'')+'</span><em>'+new Date(e.t).toLocaleString()+'</em></div>'+
       '<div class="zc-hb"><button data-hopen="'+i+'">Reopen</button><button data-hcopy="'+i+'">Copy</button><button data-hdel="'+i+'" title="Delete">✕</button></div></div>'; }).join('')+'</div>';
 }
@@ -2338,12 +2338,9 @@ function renderConsts(body){
   h+='<div class="zc-card"><div class="zc-ct">Material densities</div><div class="zc-tw"><table class="zc-t"><tr><th>Group</th><th>Material</th><th>Grade / standard</th><th>kg/m³</th><th>lb/ft³</th><th>Status</th><th>Source</th><th>Note</th></tr>'+
     DATA.mat.map(function(m){ var r=matRho(m.id); return '<tr><td>'+esc(m.grp)+'</td><td>'+esc(m.name)+'</td><td>'+esc(m.grade)+'</td><td class="zc-num">'+(r.rho!=null?nf(r.rho,0):'—')+'</td><td class="zc-num">'+(r.rho!=null?nf(fromSI(r.rho,'dens','lb/ft³'),2):'—')+'</td><td>'+
       (r.custom?'<span class="zc-badge zc-b-user">User-defined</span>':m.st==='std'?'<span class="zc-badge zc-b-std">Standard</span>':m.st==='typ'?'<span class="zc-badge zc-b-typ">Typical — verify</span>':'<span class="zc-badge zc-b-nv">Data not verified</span>')+'</td><td>'+esc(srcText(m.src))+'</td><td>'+esc(m.note)+'</td></tr>'; }).join('')+'</table></div></div>';
-  h+='<div class="zc-card"><div class="zc-ct">Constants</div><table class="zc-t"><tr><td>Standard gravity gn</td><td>9.80665 m/s² (exact) — NIST SP 811</td></tr><tr><td>Steel mass basis</td><td>7850 kg/m³ = 0.00785 kg/mm²/m (BS 4449, EN 10220, ASME B36.10M)</td></tr><tr><td>Rebar rule</td><td>d²/162 kg/m (exact at 7850: d²/162.2)</td></tr><tr><td>Cement bag</td><td>50 kg ÷ 1440 kg/m³ = 0.03472 m³ = 1.226 CFT (IS 875-1 bulk density)</td></tr><tr><td>Water</td><td>1000 kg/m³; 1 m³ = 1000 L</td></tr><tr><td>Pipe mass factor</td><td>0.0246615 (D − t) t kg/m (EN 10220 / ASME B36.10M, ρ 7850)</td></tr><tr><td>Zinc coating Z275</td><td>275 g/m² total both sides (EN 10346)</td></tr></table></div>';
+  h+='<div class="zc-card"><div class="zc-ct">Constants</div><table class="zc-t"><tr><td>Standard gravity gn</td><td>9.80665 m/s² (exact) — NIST SP 811</td></tr><tr><td>Steel mass basis</td><td>7850 kg/m³ = 0.00785 kg/mm²/m (BS 4449, EN 10220, ASME B36.10M)</td></tr><tr><td>Rebar rule</td><td>d²/162 kg/m (exact at 7850: d²/162.2)</td></tr><tr><td>Cement bag</td><td>50 kg ÷ 1440 kg/m³ = 0.03472 m³ = 1.226 CFT (IS 875-1 bulk density)</td></tr><tr><td>Water</td><td>1000 kg/m³; 1 m³ = 1000 L</td></tr></table></div>';
   h+='<div class="zc-card"><div class="zc-ct">Rebar — BS 4449 (published) and ASTM A615 (sutar)</div><div class="zc-tw"><table class="zc-t"><tr><th>Ø mm</th><th>BS 4449 kg/m</th><th>kg/ft</th><th>d²/162</th></tr>'+DATA.rebar.bs4449.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+nf(r[1]*0.3048,3)+'</td><td>'+nf(r[0]*r[0]/162,3)+'</td></tr>'; }).join('')+'</table>'+
     '<table class="zc-t"><tr><th>Bar No. (sutar)</th><th>Ø in</th><th>Ø mm</th><th>lb/ft (A615)</th><th>kg/m</th><th>kg/ft</th></tr>'+DATA.rebar.a615.map(function(r){ var kg=r[2]*1.48816394; return '<tr><td>#'+r[0]+'</td><td>'+r[1]+'</td><td>'+nf(r[1]*25.4,1)+'</td><td>'+r[2]+'</td><td>'+nf(kg,3)+'</td><td>'+nf(kg*0.3048,3)+'</td></tr>'; }).join('')+'</table></div><div class="zc-hint">'+esc(srcText('bs4449'))+' · '+esc(srcText('a615'))+'</div></div>';
-  h+='<div class="zc-card"><div class="zc-ct">IEC 60228 Class 2 — max DC resistance at 20 °C (Ω/km)</div><div class="zc-tw"><table class="zc-t"><tr><th>mm²</th><th>Copper</th><th>Aluminium</th><th>Cu kg/km per core (A × 8.89)</th></tr>'+DATA.iec60228.map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+(r[2]==null?'—':r[2])+'</td><td>'+nf(r[0]*8.89,1)+'</td></tr>'; }).join('')+'</table></div></div>';
-  h+='<div class="zc-card"><div class="zc-ct">Sheet / tube gauges</div><p class="zc-hint">GI, MS, stainless, aluminium, SWG and BWG gauge tables (10–30) with sources are in the <button class="zc-lnk" data-lib="gaugelib">Gauge Reference Table →</button></p></div>';
-  h+='<div class="zc-card"><div class="zc-ct">AWG (ASTM B258)</div><div class="zc-tw"><table class="zc-t"><tr><th>AWG</th><th>Ø mm</th><th>mm²</th></tr>'+DATA.awg.filter(function(r,i){return i<27;}).map(function(r){ return '<tr><td>'+r[0]+'</td><td>'+nf(r[1],3)+'</td><td>'+nf(r[2],3)+'</td></tr>'; }).join('')+'</table></div></div>';
   body.innerHTML=h;
 }
 function renderSettings(body){
@@ -2401,7 +2398,7 @@ function unitAlias(){ if(UAL) return UAL; UAL={}; Object.keys(UNITS).forEach(fun
     temp:{'°C':'c degc celsius','°F':'f degf fahrenheit'}};
   Object.keys(X).forEach(function(d){ Object.keys(X[d]).forEach(function(u){ var unit=u==='m2m'?'m²':u; if(UNITS[d]&&UNITS[d].f[unit]!=null||d==='temp') X[d][u].split(' ').forEach(function(a){ UAL[unorm(a)]=[d,unit]; }); }); });
   return UAL; }
-var MATW={concrete:'conc',pcc:'conc',plain:'conc',rcc:'rcc',reinforced:'rcc',brick:'brick',brickwork:'brick',masonry:'brick',eent:'brick',mortar:'mortar',masala:'mortar',cement:'cement',sand:'sand',ret:'sand',water:'water',steel:'ms',ms:'ms',iron:'ms',earth:'earth',soil:'earth',mitti:'earth',crush:'agg',aggregate:'agg',bajri:'agg',copper:'cu',aluminium:'al',aluminum:'al',ss:'ss304',stainless:'ss304'};
+var MATW={concrete:'conc',pcc:'conc',plain:'conc',rcc:'rcc',reinforced:'rcc',brick:'brick',brickwork:'brick',masonry:'brick',eent:'brick',mortar:'mortar',masala:'mortar',cement:'cement',sand:'sand',ret:'sand',water:'water',steel:'ms',ms:'ms',iron:'ms',earth:'earth',soil:'earth',mitti:'earth',crush:'agg',aggregate:'agg',bajri:'agg'};
 function smartQty(q,out){
   var A=unitAlias(), m, ql=q.toLowerCase();
   // material weight: "100 cft rcc to kg", "rcc 100 cft", "500 kg cement in cft"
@@ -2548,7 +2545,7 @@ function onClick(e){
   else if(a==='csv'){ doCSV(); } else if(a==='xls'){ doXLS(); }
   else if(a==='swap'){ var tmp=CV.from; CV.from=CV.to; CV.to=tmp; renderConverter($('zcView')); }
   else if(a==='clearhist'){ if(confirm('Clear all recent calculations on this device?')){ HIST=[]; store.set('hist',HIST); render(); } }
-  else if(a==='clearlocal'){ if(confirm('Clear favourites, history, last inputs, density overrides and custom calculators on this device?')){ ['hist','last','fav','dens','custom','conv','secdb'].forEach(function(k){ try{ localStorage.removeItem('zdcalc.'+k); }catch(x){} }); HIST=[]; LAST={}; FAV=['rebar','pipe','plate','section','angle','concrete','brick']; DENS_OVR={}; CUSTOM=[]; flash('Cleared'); render(); } }
+  else if(a==='clearlocal'){ if(confirm('Clear favourites, history, last inputs, density overrides and custom calculators on this device?')){ ['hist','last','fav','dens','custom','conv','secdb'].forEach(function(k){ try{ localStorage.removeItem('sqcalc.'+k); }catch(x){} }); HIST=[]; LAST={}; FAV=['concrete','brick','block','plaster','mixmat','rebar']; DENS_OVR={}; CUSTOM=[]; flash('Cleared'); render(); } }
   else if(a==='ceadd'){ CE.inputs.push({k:'',l:'',u:'',def:''}); renderCustom($('zcView')); }
   else if(a==='cenew'){ CE=null; renderCustom($('zcView')); }
   else if(a==='cesave'){ var errs=ceValidate(CE), msg=$('zcCeMsg'); if(errs.length){ msg.innerHTML='<div class="zc-err"><ul>'+errs.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>'; return; }
@@ -2570,6 +2567,7 @@ CATS.forEach(function(c){ if(c.id==='steel'){ c.name='Reinforcement (RCC)'; c.d=
 LIBS=LIBS.filter(function(l){ return ['conv','convlib','formlib','consts','settings'].indexOf(l.v)>=0; });
 function sqKind(c){ return !c ? '' : c.cat==='items' ? 'k-t'+ZC_TRADES.indexOf(c.trade) : 'k-'+c.cat; }
 var ZC_ORDER=['civil','steel','fin','items','conv']; CATS.sort(function(a,b){ return ZC_ORDER.indexOf(a.id)-ZC_ORDER.indexOf(b.id); });
+DATA.mat=DATA.mat.filter(function(m){ return m.grp==='Civil'||m.id==='ms'; });   // construction materials only
 /* ---------------- dashboard integration */
 var OTHER_APPS=['appEXEC','appADMIN','appCM','appPAY','appRA','appFEAS'], OTHER_BTNS=['modExec','modAdmin','tabCM','tabPAY','tabRA','tabFEAS'];
 function build(){
