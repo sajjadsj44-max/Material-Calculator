@@ -1118,6 +1118,7 @@ def({id:'steel',cat:'steel',name:'Steel Weight Calculator',sub:'Any shape: bar, 
 
 /* ======================= CIVIL ======================= */
 var FT_UNITS=['ft','in','m','cm','mm','RFT'];
+var QM_OPTS=[['lwh','L × W × H'],['ah','Area × H']];
 function dimStr(n,a,b,c){ return nw(n)+' × '+nw(a)+(b!=null?' × '+nw(b):'')+(c!=null?' × '+nw(c):''); }
 function mixQty(R,dryV,parts,opt){ // dryV in CFT; parts [c, s, a?] ; returns cement bags etc.
   var sum=parts.reduce(function(x,y){return x+y;},0), bagCft=opt.bagKg/opt.cemRho/0.028316846592;
@@ -1141,9 +1142,11 @@ var ROWS_OPEN={type:'rows',k:'ops',l:'Openings to deduct (doors, windows)',cols:
 
 def({id:'concrete',cat:'civil',name:'Concrete (PCC / RCC)',sub:'Volume by dimension strings, deductions, nominal-mix materials, optional steel',ic:'box',
   kw:'concrete pcc rcc slab footing beam column volume cft m3 mix 1:2:4 cement bags sand crush lean concrete',
-  fl:['V = Nos × L × W × D  (deductions as negative rows)','Vdry = V × 1.54 (convention)','cement bags = Vdry × c/Σ ÷ Vbag','Vbag = 50 kg ÷ 1440 kg/m³ = 1.226 CFT'],
+  fl:['V = Nos × L × W × D  or  Nos × A × D  (deductions as negative rows)','Vdry = V × 1.54 (convention)','cement bags = Vdry × c/Σ ÷ Vbag','Vbag = 50 kg ÷ 1440 kg/m³ = 1.226 CFT'],
   inputs:[Sel('kind','Type',[['pcc','PCC (plain)'],['rcc','RCC (reinforced)']],'rcc'),Sel('el','Element',[['rect','Rectangular (slab / footing / beam / wall / column)'],['circ','Circular (column / pile)']],'rect'),
-    Num('n','Nos',1),Lin('L','Length L','ft',20,'ft',{units:FT_UNITS,show:function(v){return v.el==='rect';}}),Lin('W','Width W','ft',10,'ft',{units:FT_UNITS,show:function(v){return v.el==='rect';}}),
+    Sel('qm','Quantity from',QM_OPTS,'lwh',{show:function(v){return v.el==='rect';}}),
+    Num('n','Nos',1),Lin('L','Length L','ft',20,'ft',{units:FT_UNITS,show:function(v){return v.el==='rect'&&v.qm!=='ah';}}),Lin('W','Width W','ft',10,'ft',{units:FT_UNITS,show:function(v){return v.el==='rect'&&v.qm!=='ah';}}),
+    {k:'A',l:'Plan area A',dim:'area',u:'SFT',def:200,base:'SFT',show:function(v){return v.el==='rect'&&v.qm==='ah';}},
     Lin('dia','Diameter','ft',1.5,'ft',{units:FT_UNITS,show:function(v){return v.el==='circ';}}),Lin('D','Depth / thickness / height','ft',0.5,'ft',{units:FT_UNITS}),
     {type:'rows',k:'ded',l:'Deductions (Nos × L × W × D)',cols:[['n','Nos'],['l','L'],['w','W'],['d','D']],u:'ft',base:'ft'},
     Sel('mix','Nominal mix (c : s : a)',[['none','No material breakdown']].concat(MIX_CONC),'1:2:4',{grp:'mix'}),
@@ -1154,7 +1157,8 @@ def({id:'concrete',cat:'civil',name:'Concrete (PCC / RCC)',sub:'Volume by dimens
     {k:'steel',l:'Steel (kg per m³ of concrete, from design)',dim:'dens',u:'kg/m³',def:0,base:'kg/m³',allow0:true,opt:true,show:function(v){return v.kind==='rcc';}}],
   calc:function(v,R){
     var gross, base;
-    if(v.el==='rect'){ if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D must be greater than zero'); gross=v.n*v.L*v.W*v.D; R.step('Gross volume','V = Nos × L × W × D',dimStr(v.n,v.L,v.W,v.D),gross,'CFT'); R.res('Plan / top area (Nos × L × W)',sft2m2(v.n*v.L*v.W),'area'); }
+    if(v.el==='rect'&&v.qm==='ah'){ if(!(v.A>0&&v.D>0)) return R.err('Area and D must be greater than zero'); gross=v.n*v.A*v.D; R.step('Gross volume','V = Nos × A × D',dimStr(v.n,v.A,v.D),gross,'CFT'); R.res('Plan / top area (Nos × A)',sft2m2(v.n*v.A),'area'); }
+    else if(v.el==='rect'){ if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D must be greater than zero'); gross=v.n*v.L*v.W*v.D; R.step('Gross volume','V = Nos × L × W × D',dimStr(v.n,v.L,v.W,v.D),gross,'CFT'); R.res('Plan / top area (Nos × L × W)',sft2m2(v.n*v.L*v.W),'area'); }
     else { if(!(v.dia>0&&v.D>0)) return R.err('Diameter and height must be greater than zero'); base=PI/4*v.dia*v.dia; gross=v.n*base*v.D; R.step('Gross volume','V = Nos × π/4 × d² × H',nw(v.n)+' × π/4 × '+nw(v.dia)+'² × '+nw(v.D),gross,'CFT'); }
     var ded=0; (v.ded||[]).forEach(function(o,i){ if(o.n>0&&o.l>0&&o.w>0&&o.d>0){ var q=o.n*o.l*o.w*o.d; ded+=q; R.step('Less deduction '+(i+1),'−(Nos × L × W × D)','−('+dimStr(o.n,o.l,o.w,o.d)+')',-q,'CFT'); } });
     var net=gross-ded; if(net<=0) return R.err('Deductions exceed the gross volume');
@@ -1166,8 +1170,8 @@ def({id:'concrete',cat:'civil',name:'Concrete (PCC / RCC)',sub:'Volume by dimens
       var dry=V*v.dry; R.step('Dry volume','Vdry = V × '+nw(v.dry)+' (convention)',nw(V)+' × '+nw(v.dry),dry,'CFT'); R.res('Dry volume',cft2m3(dry),'vol');
       mixQty(R,dry,parts,v); R.warn('Dry-volume factor '+v.dry+' is a QS convention (editable), not a standard value.'); }
     if(v.kind==='rcc'&&v.steel>0){ var st=cft2m3(V)*v.steel; R.step('Reinforcement','Ws = V(m³) × kg/m³',nw(cft2m3(V))+' × '+nw(v.steel),st,'kg'); R.res('Reinforcement steel',st,'mass'); }
-    R.sum=(v.kind==='rcc'?'RCC ':'PCC ')+(v.el==='rect'?dimStr(v.n,v.L,v.W,v.D)+' ft':'Ø'+nw(v.dia)+' ft')+' → '+nf(V,3)+' CFT';
-    R.shape=v.el==='rect'?{sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.D,u:v._u.L,n:v.n}}:{sh:'cyl',p:{D:v._raw.dia,H:v._raw.D,u:v._u.dia}};
+    R.sum=(v.kind==='rcc'?'RCC ':'PCC ')+(v.el!=='rect'?'Ø'+nw(v.dia)+' ft':v.qm==='ah'?nw(v.n)+' × '+nw(v.A)+' SFT × '+nw(v.D)+' ft':dimStr(v.n,v.L,v.W,v.D)+' ft')+' → '+nf(V,3)+' CFT';
+    R.shape=v.el==='rect'&&v.qm==='ah'?{sh:'box',p:{}}:v.el==='rect'?{sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.D,u:v._u.L,n:v.n}}:{sh:'cyl',p:{D:v._raw.dia,H:v._raw.D,u:v._u.dia}};
   }});
 
 def({id:'mixmat',cat:'civil',name:'Civil Material Calculator',sub:'Cement, sand, crush for any mortar or concrete volume and mix',ic:'box',
@@ -1186,11 +1190,17 @@ def({id:'mixmat',cat:'civil',name:'Civil Material Calculator',sub:'Cement, sand,
     R.sum=(v.type==='conc'?'Concrete ':'Mortar ')+parts.join(':')+' — '+nf(v.V,3)+' CFT → '+nf(q.bags,2)+' bags'; R.shape={sh:'box',p:{}}; }});
 
 def({id:'excav',cat:'civil',name:'Excavation / Earthwork',sub:'Trench / pit volume with side slopes and working space; loose volume',ic:'trench',
-  kw:'excavation earthwork trench pit dig cutting filling backfill soil volume cft',fl:['Vertical: V = Nos × L × W × D','Sloped: V = D/6 × (A1 + 4Am + A2) (prismoidal)','Loose = V × (1 + swell%)'],
-  inputs:[Num('n','Nos',1),Lin('L','Length (bottom)','ft',50,'ft',{units:FT_UNITS}),Lin('W','Width (bottom)','ft',4,'ft',{units:FT_UNITS}),Lin('D','Depth','ft',5,'ft',{units:FT_UNITS}),
-    Lin('ws','Working space each side','ft',0,'ft',{units:FT_UNITS,allow0:true,opt:true}),Num('s','Side slope (horizontal per 1 vertical)',0,{allow0:true,hint:'0 = vertical sides; 0.5 = ½H : 1V'}),
+  kw:'excavation earthwork trench pit dig cutting filling backfill soil volume cft',fl:['Vertical: V = Nos × L × W × D  or  Nos × A × D','Sloped: V = D/6 × (A1 + 4Am + A2) (prismoidal)','Loose = V × (1 + swell%)'],
+  inputs:[Sel('qm','Quantity from',QM_OPTS,'lwh',{hint:'Area × H = vertical sides only (no working space or slope)'}),Num('n','Nos',1),Lin('L','Length (bottom)','ft',50,'ft',{units:FT_UNITS,show:function(v){return v.qm!=='ah';}}),Lin('W','Width (bottom)','ft',4,'ft',{units:FT_UNITS,show:function(v){return v.qm!=='ah';}}),
+    {k:'A',l:'Plan area A',dim:'area',u:'SFT',def:200,base:'SFT',show:function(v){return v.qm==='ah';}},Lin('D','Depth','ft',5,'ft',{units:FT_UNITS}),
+    Lin('ws','Working space each side','ft',0,'ft',{units:FT_UNITS,allow0:true,opt:true,show:function(v){return v.qm!=='ah';}}),Num('s','Side slope (horizontal per 1 vertical)',0,{allow0:true,hint:'0 = vertical sides; 0.5 = ½H : 1V',show:function(v){return v.qm!=='ah';}}),
     Num('swell','Swell / bulking % for disposal (soil dependent)',0,{allow0:true,conv:true,hint:'Enter from soil investigation or specification'})],
-  calc:function(v,R){ if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D must be greater than zero');
+  calc:function(v,R){
+    if(v.qm==='ah'){ if(!(v.A>0&&v.D>0)) return R.err('Area and D must be greater than zero'); R.meta({std:'Engineering geometry',src:['geom'],kind:'Calculated'});
+      var Va=v.n*v.A*v.D; R.step('Volume','V = Nos × A × D',dimStr(v.n,v.A,v.D),Va,'CFT'); R.res('Excavation volume (in-situ)',cft2m3(Va),'vol',{main:true});
+      if(v.swell){ var La=Va*(1+v.swell/100); R.step('Loose volume','V × (1 + swell%)',nw(Va)+' × '+nw(1+v.swell/100),La,'CFT'); R.res('Loose volume (disposal)',cft2m3(La),'vol'); }
+      R.res('Bottom area',sft2m2(v.n*v.A),'area'); R.sum='Excavation '+nw(v.n)+' × '+nw(v.A)+' SFT × '+nw(v.D)+' ft → '+nf(Va,3)+' CFT'; R.shape={sh:'trench',p:{}}; return; }
+    if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D must be greater than zero');
     R.meta({std:'Engineering geometry (prismoidal formula)',src:['geom'],kind:'Calculated'});
     var L=v.L+2*(v.ws||0), W=v.W+2*(v.ws||0); if(v.ws) R.step('Bottom size with working space','L + 2ws, W + 2ws',nw(v.L)+' + 2 × '+nw(v.ws)+' ; '+nw(v.W)+' + 2 × '+nw(v.ws),L*W,'SFT');
     var V;
@@ -1249,15 +1259,16 @@ def({id:'block',cat:'civil',name:'Blockwork',sub:'4" / 6" / 8" or custom concret
     R.sum='Blockwork '+dimStr(v.n,v.L,v.H)+' ft → '+nf(Math.ceil(Nw),0)+' blocks'; R.shape={sh:'wall',p:{L:v._raw.L,H:v._raw.H,u:v._u.L,ops:v.ops}}; }});
 
 def({id:'stone',cat:'civil',name:'Stone Masonry',sub:'Random rubble / coursed stone — volume, mortar share, cement, sand',ic:'box',
-  kw:'stone masonry rubble stonework dry stone pitching',fl:['V = Nos × L × W × H','Wet mortar = V × mortar %','Stone (solid) = V − wet mortar'],
-  inputs:[Num('n','Nos',1),Lin('L','Length','ft',20,'ft',{units:FT_UNITS}),Lin('W','Thickness / width','ft',1.5,'ft',{units:FT_UNITS}),Lin('H','Height','ft',3,'ft',{units:FT_UNITS}),
+  kw:'stone masonry rubble stonework dry stone pitching',fl:['V = Nos × L × W × H  or  Nos × A × H','Wet mortar = V × mortar %','Stone (solid) = V − wet mortar'],
+  inputs:[Sel('qm','Quantity from',QM_OPTS,'lwh'),Num('n','Nos',1),Lin('L','Length','ft',20,'ft',{units:FT_UNITS,show:function(v){return v.qm!=='ah';}}),Lin('W','Thickness / width','ft',1.5,'ft',{units:FT_UNITS,show:function(v){return v.qm!=='ah';}}),
+    {k:'A',l:'Plan area A (L × thickness)',dim:'area',u:'SFT',def:30,base:'SFT',show:function(v){return v.qm==='ah';}},Lin('H','Height','ft',3,'ft',{units:FT_UNITS}),
     Num('mp','Mortar share of volume % (specification)',30,{conv:true,hint:'Depends on stone and bond — take from specification'}),Sel('mm','Mortar mix',MIX_MORT,'1:6'),Num('rc','Cement part',1,{show:function(v){return v.mm==='custom';}}),Num('rs','Sand part',6,{show:function(v){return v.mm==='custom';}}),
     Num('dry','Mortar dry-volume factor (convention)',1.27,{conv:true}),CEM_IN[0],CEM_IN[1]],
-  calc:function(v,R){ if(!(v.L>0&&v.W>0&&v.H>0)) return R.err('Dimensions must be greater than zero'); R.meta({std:'Engineering geometry + specification factors',src:['geom','conv'],kind:'Calculated'});
-    var V=v.n*v.L*v.W*v.H; R.step('Masonry volume','V = Nos × L × W × H',dimStr(v.n,v.L,v.W,v.H),V,'CFT'); var wet=V*v.mp/100; R.step('Wet mortar','V × mortar %',nw(V)+' × '+nw(v.mp)+'%',wet,'CFT');
+  calc:function(v,R){ var ah=v.qm==='ah'; if(!(ah?v.A>0&&v.H>0:v.L>0&&v.W>0&&v.H>0)) return R.err('Dimensions must be greater than zero'); R.meta({std:'Engineering geometry + specification factors',src:['geom','conv'],kind:'Calculated'});
+    var V=ah?v.n*v.A*v.H:v.n*v.L*v.W*v.H; R.step('Masonry volume',ah?'V = Nos × A × H':'V = Nos × L × W × H',ah?dimStr(v.n,v.A,v.H):dimStr(v.n,v.L,v.W,v.H),V,'CFT'); var wet=V*v.mp/100; R.step('Wet mortar','V × mortar %',nw(V)+' × '+nw(v.mp)+'%',wet,'CFT');
     R.step('Solid stone','V − wet mortar',nw(V)+' − '+nw(wet),V-wet,'CFT'); var dry=wet*v.dry; R.step('Dry mortar','× factor',nw(wet)+' × '+nw(v.dry),dry,'CFT');
     R.res('Masonry volume',cft2m3(V),'vol',{main:true}); R.res('Solid stone',cft2m3(V-wet),'vol'); mixQty(R,dry,v.mm==='custom'?[v.rc,v.rs]:v.mm.split(':').map(Number),v);
-    R.sum='Stone masonry '+dimStr(v.n,v.L,v.W,v.H)+' ft → '+nf(V,3)+' CFT'; R.shape={sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.H,dl:'H',u:v._u.L,n:v.n}}; }});
+    R.sum='Stone masonry '+(ah?nw(v.n)+' × '+nw(v.A)+' SFT × '+nw(v.H)+' ft':dimStr(v.n,v.L,v.W,v.H)+' ft')+' → '+nf(V,3)+' CFT'; R.shape=ah?{sh:'box',p:{}}:{sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.H,dl:'H',u:v._u.L,n:v.n}}; }});
 
 def({id:'plaster',cat:'civil',name:'Plaster',sub:'Wall / ceiling area, openings, thickness → mortar, cement, sand',ic:'wall',
   kw:'plaster plastering render cement plaster wall ceiling 1:4 1:6 thickness 1/2 inch 3/4 inch',
@@ -1572,17 +1583,19 @@ def({id:'matwt',cat:'civil',name:'Material Weight (CFT ↔ kg)',sub:'Concrete, R
 
 def({id:'fill',cat:'civil',name:'Filling / Backfilling',sub:'Earth / sand filling — compacted volume, loose volume to supply, weight, truck trips',ic:'trench',
   kw:'filling backfill backfilling earth filling sand filling bharai bharti compaction under floor plinth filling murum soil truck trips',
-  fl:['Compacted V = Nos × L × W × D  (or excavation − structure)','Loose V = compacted × (1 + allowance%)','Trips = loose V / truck capacity'],
-  inputs:[Sel('mode','Volume from',[['dims','Nos × L × W × D'],['net','Excavation − structure (backfill)'],['vol','Direct compacted volume']],'dims'),
-    Num('n','Nos',1,{show:function(v){return v.mode==='dims';}}),Lin('L','Length','ft',30,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims';}}),Lin('W','Width','ft',20,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims';}}),
-    Lin('D','Depth / thickness','ft',1,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims';}}),
-    {type:'rows',k:'ded',l:'Deductions (Nos × L × W × D) — pits, foundations inside fill',cols:[['n','Nos'],['l','L'],['w','W'],['d','D']],u:'ft',base:'ft',show:function(v){return v.mode==='dims';}},
+  fl:['Compacted V = Nos × L × W × D  or  Nos × A × D  (or excavation − structure)','Loose V = compacted × (1 + allowance%)','Trips = loose V / truck capacity'],
+  inputs:[Sel('mode','Volume from',[['dims','Nos × L × W × D'],['ad','Nos × Area × D'],['net','Excavation − structure (backfill)'],['vol','Direct compacted volume']],'dims'),
+    Num('n','Nos',1,{show:function(v){return v.mode==='dims'||v.mode==='ad';}}),Lin('L','Length','ft',30,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims';}}),Lin('W','Width','ft',20,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims';}}),
+    {k:'A',l:'Plan area A',dim:'area',u:'SFT',def:600,base:'SFT',show:function(v){return v.mode==='ad';}},
+    Lin('D','Depth / thickness','ft',1,'ft',{units:FT_UNITS,show:function(v){return v.mode==='dims'||v.mode==='ad';}}),
+    {type:'rows',k:'ded',l:'Deductions (Nos × L × W × D) — pits, foundations inside fill',cols:[['n','Nos'],['l','L'],['w','W'],['d','D']],u:'ft',base:'ft',show:function(v){return v.mode==='dims'||v.mode==='ad';}},
     {k:'Vx',l:'Excavation volume',dim:'vol',u:'CFT',def:1000,base:'CFT',units:VOL_UNITS,show:function(v){return v.mode==='net';}},{k:'Vs',l:'Structure volume below ground (footings, PCC, walls)',dim:'vol',u:'CFT',def:300,base:'CFT',units:VOL_UNITS,show:function(v){return v.mode==='net';}},
     {k:'Vc',l:'Compacted volume',dim:'vol',u:'CFT',def:500,base:'CFT',units:VOL_UNITS,show:function(v){return v.mode==='vol';}},
     Num('comp','Compaction / consolidation allowance % (loose → compacted)',0,{allow0:true,conv:true,hint:'From specification or site trial — e.g. sand vs earth differ'}),
     {type:'mat',k:'mat',def:'sand',grp:['Civil'],grp2:true},{k:'truck',l:'Truck / trolley capacity (optional)',dim:'vol',u:'CFT',def:null,base:'CFT',opt:true,units:VOL_UNITS}],
   calc:function(v,R){ R.meta({std:'Engineering geometry; allowance from specification',src:['geom','conv'],kind:'Calculated'}); var V;
-    if(v.mode==='dims'){ if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D required'); V=v.n*v.L*v.W*v.D; R.step('Fill volume','Nos × L × W × D',dimStr(v.n,v.L,v.W,v.D),V,'CFT');
+    if(v.mode==='dims'||v.mode==='ad'){ if(v.mode==='ad'){ if(!(v.A>0&&v.D>0)) return R.err('Area and D required'); V=v.n*v.A*v.D; R.step('Fill volume','Nos × A × D',dimStr(v.n,v.A,v.D),V,'CFT'); }
+      else { if(!(v.L>0&&v.W>0&&v.D>0)) return R.err('L, W and D required'); V=v.n*v.L*v.W*v.D; R.step('Fill volume','Nos × L × W × D',dimStr(v.n,v.L,v.W,v.D),V,'CFT'); }
       var ded=0; (v.ded||[]).forEach(function(o,i){ if(o.n>0&&o.l>0&&o.w>0&&o.d>0){ var q=o.n*o.l*o.w*o.d; ded+=q; R.step('Less deduction '+(i+1),'−(Nos × L × W × D)','−('+dimStr(o.n,o.l,o.w,o.d)+')',-q,'CFT'); } }); V-=ded; if(ded) R.step('Net compacted volume','gross − deductions','',V,'CFT'); }
     else if(v.mode==='net'){ if(!(v.Vx>0)) return R.err('Excavation volume required'); V=v.Vx-(v.Vs||0); R.step('Backfill (compacted)','V = excavation − structure',nw(v.Vx)+' − '+nw(v.Vs||0),V,'CFT'); }
     else { V=v.Vc; if(!(V>0)) return R.err('Volume required'); }
@@ -1591,7 +1604,7 @@ def({id:'fill',cat:'civil',name:'Filling / Backfilling',sub:'Earth / sand fillin
     R.res('Loose volume to supply',cft2m3(Lv),'vol',{main:true,units:['CFT','m³','brass (100 CFT)']}); R.res('Compacted volume',cft2m3(V),'vol');
     if(v.rho>0){ var W=cft2m3(Lv)*v.rho; R.step('Weight (loose)','V(m³) × ρ',nw(cft2m3(Lv))+' × '+nw(v.rho),W,'kg'); R.res('Weight',W,'mass'); } else R.warn('Weight: no verified density for '+(v.matName||'this material')+' — enter it to get tons.');
     if(v.truck>0){ var tr=Lv/v.truck; R.step('Trips','loose V / capacity',nw(Lv)+' / '+nw(v.truck),tr,'trips'); R.res('Truck trips',Math.ceil(tr-1e-9),'count',{u:'trips',note:nf(tr,2)+' exact'}); }
-    R.sum='Filling → '+nf(Lv,3)+' CFT loose'; R.shape={sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.D,u:v._u.L,n:v.n}}; }});
+    R.sum='Filling → '+nf(Lv,3)+' CFT loose'; R.shape=v.mode==='dims'?{sh:'box',p:{L:v._raw.L,W:v._raw.W,D:v._raw.D,u:v._u.L,n:v.n}}:{sh:'box',p:{}}; }});
 
 def({id:'bbs',cat:'steel',name:'Bar Bending Schedule (BBS) Weight',sub:'Rows of Ø × members × bars × cut length → weight per diameter, total tons',ic:'rebar',
   kw:'bbs bar bending schedule steel quantity rebar schedule reinforcement takeoff tonnage sariya per dia cut length members',
