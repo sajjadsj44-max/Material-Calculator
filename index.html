@@ -1215,48 +1215,83 @@ def({id:'excav',cat:'civil',name:'Excavation / Earthwork',sub:'Trench / pit volu
 function wallInputs(o){
   return [Num('n','Nos (walls)',1),Lin('L','Wall length','ft',20,'ft',{units:FT_UNITS}),Lin('H','Wall height','ft',10,'ft',{units:FT_UNITS})].concat(o.pre||[]).concat([ROWS_OPEN]).concat(o.post||[]);
 }
-def({id:'brick',cat:'civil',name:'Brickwork',sub:'Wall volume, openings, brick count, mortar, cement & sand',ic:'wall',
+/* brick sizes l × w × h in inches; the custom option covers any other kiln size */
+var BRICK_SIZES=[['9x4.5x3','9 × 4½ × 3 in (standard)'],['c','Custom size']];
+def({id:'brick',cat:'civil',name:'Brickwork',sub:'Wall thickness + brick size — count from volume, openings, mortar, cement & sand',ic:'wall',
   kw:'brick brickwork masonry wall 9 inch 4.5 inch bricks per cft mortar cement sand 1:4 1:6 no of bricks',
   fl:['V = Nos × L × H × t − openings','Brick module = (l + j)(w + j)(h + j)','N = V / module','Wet mortar = V − N × l w h','Dry mortar = wet × 1.27 (convention)'],
-  inputs:wallInputs({pre:[Sel('tk','Wall thickness',[['4.5','4½ in (half brick)'],['9','9 in (one brick)'],['13.5','13½ in'],['18','18 in'],['c','Custom']],'9'),Lin('tc','Custom thickness','in',9,'ft',{units:['in','mm','ft'],show:function(v){return v.tk==='c';}})],
-    post:[Lin('bl','Brick length l','in',9,'ft',{units:['in','mm'],grp:'mat'}),Lin('bw','Brick width w','in',4.5,'ft',{units:['in','mm'],grp:'mat'}),Lin('bh','Brick height h','in',3,'ft',{units:['in','mm'],grp:'mat'}),
-      Lin('j','Mortar joint','in',0.375,'ft',{units:['in','mm'],grp:'mat',conv:true}),Sel('mm','Mortar mix',MIX_MORT,'1:4',{grp:'mat'}),Num('rc','Cement part',1,{grp:'mat',show:function(v){return v.mm==='custom';}}),Num('rs','Sand part',4,{grp:'mat',show:function(v){return v.mm==='custom';}}),
+  inputs:wallInputs({pre:[Sel('tk','Wall thickness',[['4.5','4½ in (half brick)'],['9','9 in (one brick)'],['13.5','13½ in'],['18','18 in'],['c','Custom']],'9'),Lin('tc','Custom wall thickness','in',9,'ft',{units:['in','mm','ft'],show:function(v){return v.tk==='c';}}),
+      Sel('bsz','Brick size (l × w × h)',BRICK_SIZES,'9x4.5x3'),
+      Lin('bl','Brick length l','in',9,'ft',{units:['in','mm'],show:function(v){return v.bsz==='c';}}),Lin('bw','Brick width w','in',4.5,'ft',{units:['in','mm'],show:function(v){return v.bsz==='c';}}),Lin('bh','Brick height h','in',3,'ft',{units:['in','mm'],show:function(v){return v.bsz==='c';}})],
+    post:[Lin('j','Mortar joint','in',0.375,'ft',{units:['in','mm'],grp:'mat',conv:true}),Sel('mm','Mortar mix',MIX_MORT,'1:4',{grp:'mat'}),Num('rc','Cement part',1,{grp:'mat',show:function(v){return v.mm==='custom';}}),Num('rs','Sand part',4,{grp:'mat',show:function(v){return v.mm==='custom';}}),
       Num('dry','Mortar dry-volume factor (convention)',1.27,{grp:'mat',conv:true,hint:'1.27–1.33 depending on practice'}),Num('bwst','Brick wastage %',0,{allow0:true,grp:'mat',conv:true}),Num('mwst','Mortar wastage %',0,{allow0:true,grp:'mat',conv:true}),CEM_IN[0],CEM_IN[1]]}),
-  calc:function(v,R){ var t=v.tk==='c'?v.tc:(+v.tk)/12; if(!(v.L>0&&v.H>0&&t>0)) return R.err('Length, height and thickness must be greater than zero');
+  calc:function(v,R){ var t=v.tk==='c'?v.tc:(+v.tk)/12, bd=v.bsz==='c'?[v.bl,v.bw,v.bh]:String(v.bsz||'9x4.5x3').split('x').map(function(x){return (+x)/12;}), bl=bd[0], bw=bd[1], bh=bd[2], j=v.j||0;
+    if(!(v.n>0&&v.L>0&&v.H>0&&t>0)) return R.err('Nos, wall length, height and thickness must be greater than zero');
+    if(!(bl>0&&bw>0&&bh>0)) return R.err('Brick length, width and height must be greater than zero'); if(j<0) return R.err('Mortar joint cannot be negative');
+    if(bw>t+1e-9) return R.err('Brick width '+nf(bw*12,3)+' in is more than the '+nf(t*12,3)+' in wall — pick a thicker wall or a smaller brick');
     R.meta({std:'Engineering geometry + QS convention factors',src:['geom','is875','conv'],kind:'Calculated'});
     var g=v.n*v.L*v.H*t; R.step('Gross wall volume','V = Nos × L × H × t',dimStr(v.n,v.L,v.H,t),g,'CFT');
     var op=openingsRows(R,v.ops,t); var V=g-op; if(V<=0) return R.err('Openings exceed the wall volume'); if(op) R.step('Net wall volume','V = gross − openings',nw(g)+' − '+nw(op),V,'CFT');
-    var mod=(v.bl+v.j)*(v.bw+v.j)*(v.bh+v.j), N=V/mod, bv=v.bl*v.bw*v.bh;
-    R.step('Brick module with joints','(l + j)(w + j)(h + j)','('+nw(v.bl)+' + '+nw(v.j)+') × ('+nw(v.bw)+' + '+nw(v.j)+') × ('+nw(v.bh)+' + '+nw(v.j)+') ft',mod,'CFT');
+    var mod=(bl+j)*(bw+j)*(bh+j), N=V/mod, bv=bl*bw*bh;
+    R.step('Brick module with joints','(l + j)(w + j)(h + j)','('+nw(bl)+' + '+nw(j)+') × ('+nw(bw)+' + '+nw(j)+') × ('+nw(bh)+' + '+nw(j)+') ft',mod,'CFT');
     R.step('Number of bricks','N = V / module',nw(V)+' / '+nw(mod),N,'Nos');
     var Nw=N*(1+(v.bwst||0)/100); if(v.bwst) R.step('Bricks incl. wastage','N × (1 + w%)',nw(N)+' × '+nw(1+v.bwst/100),Nw,'Nos');
-    var wet=V-N*bv; R.step('Wet mortar','Vm = V − N × l × w × h',nw(V)+' − '+nw(N)+' × '+nw(bv),wet,'CFT');
+    var wet=V-N*bv; if(wet<0) return R.err('Bricks fill more than the wall volume — check brick size and joint'); R.step('Wet mortar','Vm = V − N × l × w × h',nw(V)+' − '+nw(N)+' × '+nw(bv),wet,'CFT');
     var dry=wet*v.dry*(1+(v.mwst||0)/100); R.step('Dry mortar','Vm × factor'+(v.mwst?' × (1 + w%)':''),nw(wet)+' × '+nw(v.dry)+(v.mwst?' × '+nw(1+v.mwst/100):''),dry,'CFT');
-    R.res('Bricks',Math.ceil(Nw-1e-9),'count',{u:'Nos',main:true,note:nf(Nw,1)+' exact · '+nf(100/mod,1)+' per 100 CFT'});
-    R.res('Bricks per SFT of wall face',Nw/(V/t),'count',{u:'Nos/SFT'}); R.res('Net brickwork volume',cft2m3(V),'vol'); R.res('Wall face area',sft2m2(v.n*v.L*v.H-(op/t)),'area'); R.res('Wet mortar',cft2m3(wet),'vol');
+    R.res('Bricks',Math.ceil(Nw-1e-9),'count',{u:'Nos',main:true,note:nf(Nw,1)+' exact · '+nf(Nw/V,3)+' per CFT'});
+    R.res('Bricks per SFT of wall face',Nw/(V/t),'count',{u:'Nos/SFT'}); R.res('Net brickwork volume',cft2m3(V),'vol'); R.res('Wall face area',sft2m2(V/t),'area'); R.res('Wet mortar',cft2m3(wet),'vol');
     var parts=v.mm==='custom'?[v.rc,v.rs]:v.mm.split(':').map(Number); mixQty(R,dry,parts,v);
     R.warn('Joint thickness, dry-volume factor and wastage are editable QS conventions, not standard values.');
-    R.sum='Brickwork '+dimStr(v.n,v.L,v.H,t)+' ft → '+nf(V,3)+' CFT, '+nf(Math.ceil(Nw),0)+' bricks';
+    R.sum='Brickwork '+dimStr(v.n,v.L,v.H,t)+' ft → '+nf(V,3)+' CFT, '+nf(Math.ceil(Nw-1e-9),0)+' bricks ('+nf(bl*12,3)+' × '+nf(bw*12,3)+' × '+nf(bh*12,3)+' in)';
     R.shape={sh:'wall',p:{L:v._raw.L,H:v._raw.H,u:v._u.L,ops:v.ops,t:v.tk==='c'?v._raw.tc:v.tk,tu:v.tk==='c'?v._u.tc:'in'}}; }});
 
-def({id:'block',cat:'civil',name:'Blockwork',sub:'4" / 6" / 8" or custom concrete blocks — count, mortar, cement, sand',ic:'wall',
-  kw:'block blockwork concrete block hollow block solid block 4 inch 6 inch 8 inch masonry',
-  fl:['A = Nos × L × H − openings','N = A / ((l + j)(h + j))','Wet mortar = A × t − N × l × h × t (solid block)'],
-  inputs:wallInputs({pre:[Sel('bt','Block thickness',[['4','4 in'],['6','6 in'],['8','8 in'],['c','Custom']],'6'),Lin('tc','Custom thickness','in',6,'ft',{units:['in','mm'],show:function(v){return v.bt==='c';}})],
-    post:[Lin('bl','Block length l (supplier size)','in',16,'ft',{units:['in','mm'],grp:'mat'}),Lin('bh','Block height h (supplier size)','in',8,'ft',{units:['in','mm'],grp:'mat'}),
-      Lin('j','Mortar joint','in',0.375,'ft',{units:['in','mm'],grp:'mat',conv:true}),Sel('mm','Mortar mix',MIX_MORT,'1:6',{grp:'mat'}),Num('rc','Cement part',1,{grp:'mat',show:function(v){return v.mm==='custom';}}),Num('rs','Sand part',6,{grp:'mat',show:function(v){return v.mm==='custom';}}),
-      Num('dry','Mortar dry-volume factor (convention)',1.27,{grp:'mat',conv:true}),Num('bwst','Block wastage %',0,{allow0:true,grp:'mat',conv:true}),CEM_IN[0],CEM_IN[1]]}),
-  calc:function(v,R){ var t=v.bt==='c'?v.tc:(+v.bt)/12; if(!(v.L>0&&v.H>0&&t>0&&v.bl>0&&v.bh>0)) return R.err('All dimensions must be greater than zero');
+/* block sizes keyed l x w x h in inches + s (solid) / h (hollow); labels follow site usage: thickness × height × length */
+var BLOCK_SIZES=[['12x4x8s','4" × 8" × 12" solid'],['12x4x8h','4" × 8" × 12" hollow'],['16x4x8s','4" × 8" × 16" solid'],['16x4x8h','4" × 8" × 16" hollow'],
+  ['12x8x8s','8" × 8" × 12" solid'],['12x8x8h','8" × 8" × 12" hollow'],['16x8x8s','8" × 8" × 16" solid'],['16x8x8h','8" × 8" × 16" hollow'],['c','Custom block']];
+function blockHollow(v){ return v.bs==='c'?v.btyp==='h':/h$/.test(String(v.bs)); }
+def({id:'block',cat:'civil',name:'Blockwork',sub:'Wall thickness + block size (4" / 8", solid / hollow, custom) — count from volume, mortar, cement, sand',ic:'wall',
+  kw:'block blockwork concrete block hollow block solid block 4 inch 8 inch 4x8x12 4x8x16 8x8x12 8x8x16 masonry wall thickness',
+  fl:['V = Nos × L × H × t − openings (Nos × W × H × t)','Leaves k = floor(t / w), min 1','Block module = (l + j)(h + j) × t / k','N = V / module','Wet mortar = V − N × l × w × h (solid block)','Hollow: joint mortar × 2s / w (face shells only)','Dry mortar = wet × 1.27 (convention)'],
+  inputs:wallInputs({pre:[Sel('tk','Wall thickness',[['4','4 in'],['5','5 in'],['6','6 in'],['8','8 in'],['9','9 in'],['10','10 in'],['12','12 in'],['c','Custom']],'4'),
+      Lin('tc','Custom wall thickness','in',6,'ft',{units:['in','mm','ft'],show:function(v){return v.tk==='c';}}),
+      Sel('bs','Block size (thickness × height × length)',BLOCK_SIZES,'16x4x8s',{hint:'Confirm actual dimensions with the supplier'}),
+      Lin('bl','Block length l','in',16,'ft',{units:['in','mm'],show:function(v){return v.bs==='c';}}),Lin('bw','Block width (thickness) w','in',6,'ft',{units:['in','mm'],show:function(v){return v.bs==='c';}}),
+      Lin('bh','Block height h','in',8,'ft',{units:['in','mm'],show:function(v){return v.bs==='c';}}),
+      Sel('btyp','Block type',[['s','Solid'],['h','Hollow']],'s',{show:function(v){return v.bs==='c';}}),
+      Lin('fs','Hollow block face-shell thickness s','in',1.25,'ft',{units:['in','mm'],conv:true,hint:'Assumed value — measure or confirm with the supplier',show:blockHollow})],
+    post:[Lin('j','Mortar joint','in',0.375,'ft',{units:['in','mm'],grp:'mat',conv:true}),Sel('mm','Mortar mix',MIX_MORT,'1:6',{grp:'mat'}),Num('rc','Cement part',1,{grp:'mat',show:function(v){return v.mm==='custom';}}),Num('rs','Sand part',6,{grp:'mat',show:function(v){return v.mm==='custom';}}),
+      Num('dry','Mortar dry-volume factor (convention)',1.27,{grp:'mat',conv:true,hint:'1.27–1.33 depending on practice'}),Num('bwst','Block wastage %',0,{allow0:true,grp:'mat',conv:true}),Num('mwst','Mortar wastage %',0,{allow0:true,grp:'mat',conv:true}),CEM_IN[0],CEM_IN[1]]}),
+  calc:function(v,R){ var t=v.tk==='c'?v.tc:(+v.tk)/12, bd=v.bs==='c'?[v.bl,v.bw,v.bh]:String(v.bs).split('x').map(function(x){return parseFloat(x)/12;}), hol=blockHollow(v), bl=bd[0], bw=bd[1], bh=bd[2], j=v.j||0;
+    if(!(v.n>0&&v.L>0&&v.H>0&&t>0)) return R.err('Nos, wall length, height and thickness must be greater than zero');
+    if(!(bl>0&&bw>0&&bh>0)) return R.err('Block length, width and height must be greater than zero'); if(j<0) return R.err('Mortar joint cannot be negative');
     R.meta({std:'Engineering geometry + QS convention factors',src:['geom','is875','conv'],kind:'Calculated'});
-    var g=v.n*v.L*v.H; R.step('Gross wall area','A = Nos × L × H',dimStr(v.n,v.L,v.H),g,'SFT'); var op=openingsRows(R,v.ops,null); var A=g-op; if(A<=0) return R.err('Openings exceed the wall area');
-    if(op) R.step('Net wall area','A = gross − openings',nw(g)+' − '+nw(op),A,'SFT');
-    var face=(v.bl+v.j)*(v.bh+v.j), N=A/face; R.step('Block face with joints','(l + j)(h + j)','('+nw(v.bl)+' + '+nw(v.j)+') × ('+nw(v.bh)+' + '+nw(v.j)+') ft',face,'SFT');
-    R.step('Number of blocks','N = A / face',nw(A)+' / '+nw(face),N,'Nos'); var Nw=N*(1+(v.bwst||0)/100);
-    var V=A*t, wet=V-N*v.bl*v.bh*t; R.step('Wall volume','V = A × t',nw(A)+' × '+nw(t),V,'CFT'); R.step('Wet mortar (solid block)','V − N × l × h × t',nw(V)+' − '+nw(N)+' × '+nw(v.bl*v.bh*t),wet,'CFT');
-    var dry=wet*v.dry; R.step('Dry mortar','Vm × factor',nw(wet)+' × '+nw(v.dry),dry,'CFT');
-    R.res('Blocks',Math.ceil(Nw-1e-9),'count',{u:'Nos',main:true,note:nf(Nw,1)+' exact'}); R.res('Net wall area',sft2m2(A),'area'); R.res('Wall volume',cft2m3(V),'vol');
-    mixQty(R,dry,v.mm==='custom'?[v.rc,v.rs]:v.mm.split(':').map(Number),v); R.warn('Hollow blocks use less mortar (bed joints on shells only) — adjust the result or dry factor.');
-    R.sum='Blockwork '+dimStr(v.n,v.L,v.H)+' ft → '+nf(Math.ceil(Nw),0)+' blocks'; R.shape={sh:'wall',p:{L:v._raw.L,H:v._raw.H,u:v._u.L,ops:v.ops}}; }});
+    var g=v.n*v.L*v.H*t; R.step('Gross wall volume','V = Nos × L × H × t',dimStr(v.n,v.L,v.H,t),g,'CFT');
+    var op=openingsRows(R,v.ops,t); var V=g-op; if(V<=0) return R.err('Openings exceed the wall volume'); if(op) R.step('Net wall volume','V = gross − openings',nw(g)+' − '+nw(op),V,'CFT');
+    var k=Math.max(1,Math.floor(t/bw+0.05)), lay=k*bw+(k-1)*j;   // 5% tolerance so e.g. 2 × 3.937 in counts as 2 leaves in a 7.87 in wall
+    R.step('Block leaves across thickness','k = floor(t / w), min 1',nw(t)+' / '+nw(bw),k,'Nos');
+    if(lay>t+j+1e-9) return R.err('Block width '+nf(bw*12,3)+' in'+(k>1?' × '+k+' leaves':'')+' is thicker than the '+nf(t*12,3)+' in wall — pick a thinner block or a thicker wall');
+    var mod=(bl+j)*(bh+j)*t/k, N=V/mod, bv=bl*bw*bh;
+    R.step('Block module with joints','(l + j)(h + j) × t / k','('+nw(bl)+' + '+nw(j)+') × ('+nw(bh)+' + '+nw(j)+') × '+nw(t)+' / '+k+' ft',mod,'CFT');
+    R.step('Number of blocks','N = V / module',nw(V)+' / '+nw(mod),N,'Nos');
+    var Nw=N*(1+(v.bwst||0)/100); if(v.bwst) R.step('Blocks incl. wastage','N × (1 + w%)',nw(N)+' × '+nw(1+v.bwst/100),Nw,'Nos');
+    var wet=V-N*bv; if(wet<0) return R.err('Blocks fill more than the wall volume — check wall thickness, block size and joint'); R.step('Wet mortar (as solid block)','Vm = V − N × l × w × h',nw(V)+' − '+nw(N)+' × '+nw(bv),wet,'CFT');
+    if(hol){ var fs=v.fs; if(!(fs>0&&2*fs<bw)) return R.err('Face-shell thickness must be more than zero and less than half the block width');
+      var jm=N*((bl+j)*(bh+j)-bl*bh)*bw, fill=wet-jm, fr=2*fs/bw, jh=jm*fr; if(Math.abs(fill)<1e-9) fill=0;
+      R.step('Joint mortar (full width)','Vj = N × ((l + j)(h + j) − l h) × w',nw(N)+' × ('+nw((bl+j)*(bh+j))+' − '+nw(bl*bh)+') × '+nw(bw),jm,'CFT');
+      if(fill) R.step('Gap / collar mortar','Vg = Vm − Vj',nw(wet)+' − '+nw(jm),fill,'CFT');
+      R.step('Joint mortar on face shells','Vj × 2s / w',nw(jm)+' × 2 × '+nw(fs)+' / '+nw(bw),jh,'CFT');
+      wet=Math.max(0,jh+fill); if(fill) R.step('Wet mortar (hollow block)','Vm = Vj × 2s / w + Vg',nw(jh)+' + '+nw(fill),wet,'CFT'); }
+    var dry=wet*v.dry*(1+(v.mwst||0)/100); R.step('Dry mortar','Vm × factor'+(v.mwst?' × (1 + w%)':''),nw(wet)+' × '+nw(v.dry)+(v.mwst?' × '+nw(1+v.mwst/100):''),dry,'CFT');
+    var face=V/t;
+    R.res('Blocks',Math.ceil(Nw-1e-9),'count',{u:'Nos',main:true,note:nf(Nw,1)+' exact · '+nf(Nw/V,3)+' per CFT'});
+    R.res('Blocks per SFT of wall face',Nw/face,'count',{u:'Nos/SFT'}); R.res('Net blockwork volume',cft2m3(V),'vol'); R.res('Wall face area',sft2m2(face),'area'); R.res('Wet mortar',cft2m3(wet),'vol');
+    mixQty(R,dry,v.mm==='custom'?[v.rc,v.rs]:v.mm.split(':').map(Number),v);
+    if(t-lay>0.25/12+1e-9) R.warn('Wall thickness '+nf(t*12,3)+' in is more than the block layout '+nf(lay*12,3)+' in ('+k+' × '+nf(bw*12,3)+' in'+(k>1?' + joints':'')+') — the gap is counted as mortar fill.');
+    else if(lay>t+1e-9) R.note('Block layout '+nf(lay*12,3)+' in ('+k+' leaves + collar joint) is slightly thicker than the '+nf(t*12,3)+' in wall — volume is taken at the wall thickness.');
+    if(hol) R.warn('Hollow block: mortar on face shells only, cores left empty — add core-fill concrete separately if specified. Face-shell thickness is an assumed input.');
+    R.warn('Joint, dry factor and wastage are editable QS conventions, not standard values.');
+    R.sum='Blockwork '+dimStr(v.n,v.L,v.H,t)+' ft → '+nf(V,3)+' CFT, '+nf(Math.ceil(Nw-1e-9),0)+' '+(hol?'hollow':'solid')+' blocks ('+nf(bw*12,3)+' × '+nf(bh*12,3)+' × '+nf(bl*12,3)+' in)';
+    R.shape={sh:'wall',p:{L:v._raw.L,H:v._raw.H,u:v._u.L,ops:v.ops,t:v.tk==='c'?v._raw.tc:v.tk,tu:v.tk==='c'?v._u.tc:'in'}}; }});
 
 def({id:'stone',cat:'civil',name:'Stone Masonry',sub:'Random rubble / coursed stone — volume, mortar share, cement, sand',ic:'box',
   kw:'stone masonry rubble stonework dry stone pitching',fl:['V = Nos × L × W × H  or  Nos × A × H','Wet mortar = V × mortar %','Stone (solid) = V − wet mortar'],
